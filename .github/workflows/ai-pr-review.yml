@@ -1,0 +1,186 @@
+name: Reusable PR AI Review
+
+on:
+  workflow_call:
+    inputs:
+      model:
+        description: "기본 모델"
+        required: false
+        type: string
+        default: "gpt-4.1-mini"
+      run_on_fork:
+        description: "포크 PR에서도 실행"
+        required: false
+        type: boolean
+        default: false
+      max_patch_per_file:
+        description: "파일당 patch 최대 길이(문자)"
+        required: false
+        type: number
+        default: 12000
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  guard-fork:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.pull_request.head.repo.fork && inputs.run_on_fork == false }}
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: "🔒 보안상 포크 PR에서는 AI 코드리뷰가 자동 실행되지 않습니다. 필요 시 Maintainer가 내부 브랜치에서 재오픈하거나 `run_on_fork: true`로 호출하세요."
+            });
+
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: ${{ !(github.event.pull_request.head.repo.fork && inputs.run_on_fork == false) }}
+    concurrency:
+      group: ${{ github.repository }}-ai-review-pr-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    steps:
+      - name: Checkout target repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: AI Review (summary comment)
+        uses: actions/github-script@v7
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          MODEL_DEFAULT: ${{ inputs.model }}
+          MAX_PATCH_PER_FILE: ${{ inputs.max_patch_per_file }}
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const pull_number = pr.number;
+
+            // 1) 변경 파일 목록(+patch) 수집
+            const files = await github.paginate(github.rest.pulls.listFiles, { owner, repo, pull_number });
+            const maxPerFile = Number(process.env.MAX_PATCH_PER_FILE || 12000);
+            const binRe = /\.(png|jpg|jpeg|gif|svg|webp|mp4|mov|mp3|wav|zip|tgz|gz|pdf|ico)$/i;
+            const lockRe = /(package-lock\.json|pnpm-lock\.yaml|yarn\.lock)$/i;
+
+            const diffs = [];
+            let rn=false, sb=false, fa=false;
+
+            for (const f of files) {
+              const path = (f.filename || "").toLowerCase();
+              if (binRe.test(path) || lockRe.test(path)) continue;
+              if (!f.patch) continue;
+
+              if (/\.(tsx|jsx|ts|js)$/.test(path) || path.startsWith("android/") || path.startsWith("ios/")) rn = true;
+              if (/\.(java|kt|xml)$/.test(path) || /(pom\.xml|build\.gradle(\.kts)?$)/.test(path) || path.includes("src/main/")) sb = true;
+              if (/\.py$/.test(path) || /(requirements\.txt|pyproject\.toml)$/.test(path)) fa = true;
+
+              const patch = String(f.patch).slice(0, maxPerFile);
+              diffs.push(`# ${f.filename}\n\`\`\`diff\n${patch}\n\`\`\``);
+            }
+
+            if (diffs.length === 0) {
+              await github.rest.issues.createComment({
+                owner, repo, issue_number: pull_number,
+                body: "ℹ️ 변경된 코드 패치가 없거나(또는 전부 무시됨) 리뷰가 생략되었습니다."
+              });
+              return;
+            }
+
+            // 2) 스택별 가이드 결합
+            const shared = [
+              "- 레포의 코딩 규칙을 따르세요. 보안/로그(PII)/에러처리/동시성 이슈 우선.",
+              "- 중요/보통/사소 3단계로 이슈를 나누고, 가능하면 **코드 diff 제안**을 동반하세요.",
+            ].join("\n");
+
+            const rnGuide = rn ? [
+              "### React Native 가이드",
+              "- hooks 의존성/상태 업데이트 안전성, FlatList/메모이제이션 점검",
+              "- 네트워크 취소/재시도, 이미지/메모리 사용량, 권한/플랫폼 분기 확인",
+            ].join("\n") : "";
+
+            const sbGuide = sb ? [
+              "### Spring Boot 가이드",
+              "- Controller/Service/Repository 경계, 트랜잭션 전파·격리, @Valid 검증",
+              "- 예외 → 일관된 에러 응답, N+1/Lazy 로딩, 타임아웃/서킷브레이커",
+              "- 인증/인가, 민감 로그 금지, 프로파일별 설정 분리",
+            ].join("\n") : "";
+
+            const faGuide = fa ? [
+              "### FastAPI 가이드",
+              "- Pydantic 스키마·타입힌트, Depends 의존성 주입, 비동기 적합성",
+              "- 예외 핸들러·응답 모델 통일, CORS/보안 헤더, DB 세션/커넥션 관리",
+              "- 백그라운드 태스크/타임아웃·쓰레드/프로세스풀",
+            ].join("\n") : "";
+
+            const guide = [shared, rnGuide, sbGuide, faGuide].filter(Boolean).join("\n\n");
+
+            // 3) 모델 선택(레이블에 deep 라벨 있으면 상향)
+            const labels = (pr.labels || []).map(l => l.name);
+            const deep = labels.includes(process.env.DEEP_LABEL || "ai:deep");
+            const model = deep ? (process.env.MODEL_ESCALATE || "gpt-4.1") : (process.env.MODEL_DEFAULT || "gpt-4.1-mini");
+
+            // 4) 프롬프트 준비
+            const system = [
+              "You are a senior engineer performing a strict but helpful PR review.",
+              "Return sections: 1) Summary 2) Major issues (with suggested diffs) 3) Minor nits 4) Tests 5) Security/Performance.",
+              "Comment **only** on changed hunks. Be concise and actionable."
+            ].join("\n");
+
+            const user = `
+Repo: ${owner}/${repo}
+PR #${pull_number} | ${pr.title}
+
+${guide}
+
+### PR Description
+${pr.body || "(no description)"}
+
+### Changed hunks
+${diffs.join("\n\n")}
+`.trim();
+
+            // 5) OpenAI 호출
+            if (!process.env.OPENAI_API_KEY) {
+              core.setFailed("OPENAI_API_KEY secret이 없습니다.");
+              return;
+            }
+
+            const res = await fetch("https://api.openai.com/v1/chat/completions", {
+              method: "POST",
+              headers: {
+                "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
+                "Content-Type": "application/json"
+              },
+              body: JSON.stringify({
+                model,
+                messages: [
+                  { role: "system", content: system },
+                  { role: "user", content: user }
+                ]
+              })
+            });
+
+            if (!res.ok) {
+              const errTxt = await res.text();
+              core.setFailed(`OpenAI API error: ${res.status} ${errTxt}`);
+              return;
+            }
+            const data = await res.json();
+            const text = data.choices?.[0]?.message?.content || "AI reviewer produced no output.";
+
+            // 6) 리뷰 코멘트 게시(단일 요약)
+            const body = `### 🤖 AI Code Review (${model})\n\n${text}`.slice(0, 65000);
+            await github.rest.pulls.createReview({
+              owner, repo, pull_number,
+              event: "COMMENT",
+              body
+            });
+            core.info("AI review posted.");

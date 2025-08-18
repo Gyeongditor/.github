@@ -110,7 +110,7 @@ jobs:
               "- Modularize repeated logic/components: extract to shared/ui, shared/hooks, or shared/lib; prefer small, reusable utilities/components.",
               "- Styling (@emotion/native): use styled components with theme tokens and simple variant props (e.g., <Button primary />); compose with React Native style arrays ([base, cond && extra]); avoid recreating style objects inside render when possible; keep styles co-located but separate from business logic.",
               "- Error handling: avoid blanket try/catch; implement and reuse a central error handler/hook that logs safely (no PII) and surfaces clear, user-facing messages.",
-              "Prioritize high-impact findings; avoid nitpicks that don’t affect correctness or clarity."
+              "Prioritize high-impact findings; avoid nitpicks that don’t affect correctness or clarity.",
             ].join("\n") : "";
 
             const sbGuide = sb ? [
@@ -127,7 +127,7 @@ jobs:
               "- Central exception handlers; no blanket try/except.",
               "- DB session per request; avoid N+1; paginate.",
               "- Auth/CORS/limits; no secrets/PII in logs.",
-              "- Env config; DEBUG off in prod."
+              "- Env config; DEBUG off in prod.",
               "Prioritize high-impact findings; skip non-blocking nits."
             ].join("\n") : "";
 

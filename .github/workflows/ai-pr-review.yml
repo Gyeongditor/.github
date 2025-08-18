@@ -134,18 +134,18 @@ jobs:
               "Comment **only** on changed hunks. Be concise and actionable."
             ].join("\n");
 
-            const user = `
-Repo: ${owner}/${repo}
-PR #${pull_number} | ${pr.title}
-
-${guide}
-
-### PR Description
-${pr.body || "(no description)"}
-
-### Changed hunks
-${diffs.join("\n\n")}
-`.trim();
+            const user = [
+              `Repo: ${owner}/${repo}`,
+              `PR #${pull_number} | ${pr.title}`,
+              ``,
+              guide,
+              ``,
+              `### PR Description`,
+              `${pr.body || "(no description)"}`,
+              ``,
+              `### Changed hunks`,
+              diffs.join("\n\n")
+            ].join("\n");
 
             // 5) OpenAI 호출
             if (!process.env.OPENAI_API_KEY) {

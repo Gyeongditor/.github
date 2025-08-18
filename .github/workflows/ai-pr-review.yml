@@ -121,10 +121,14 @@ jobs:
             ].join("\n") : "";
 
             const faGuide = fa ? [
-              "### FastAPI 가이드",
-              "- Pydantic 스키마·타입힌트, Depends 의존성 주입, 비동기 적합성",
-              "- 예외 핸들러·응답 모델 통일, CORS/보안 헤더, DB 세션/커넥션 관리",
-              "- 백그라운드 태스크/타임아웃·쓰레드/프로세스풀",
+              "FastAPI — Starter rules",
+              "- Thin routers → services → models; Pydantic at I/O edges.",
+              "- Depends for db/session/settings; no globals.",
+              "- Central exception handlers; no blanket try/except.",
+              "- DB session per request; avoid N+1; paginate.",
+              "- Auth/CORS/limits; no secrets/PII in logs.",
+              "- Env config; DEBUG off in prod."
+              "Prioritize high-impact findings; skip non-blocking nits."
             ].join("\n") : "";
 
             const guide = [shared, rnGuide, sbGuide, faGuide].filter(Boolean).join("\n\n");

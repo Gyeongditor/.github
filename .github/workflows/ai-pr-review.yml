@@ -98,6 +98,7 @@ jobs:
             const shared = [
               "- 레포의 코딩 규칙을 따르세요. 보안/로그(PII)/에러처리/동시성 이슈 우선.",
               "- 중요/보통/사소 3단계로 이슈를 나누고, 가능하면 **코드 diff 제안**을 동반하세요.",
+              "Always respond in Korean."
             ].join("\n");
 
             const rnGuide = rn ? [

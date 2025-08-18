@@ -105,9 +105,12 @@ jobs:
             ].join("\n");
 
             const rnGuide = rn ? [
-              "### React Native 가이드",
-              "- hooks 의존성/상태 업데이트 안전성, FlatList/메모이제이션 점검",
-              "- 네트워크 취소/재시도, 이미지/메모리 사용량, 권한/플랫폼 분기 확인",
+              "React Native — FSD/Emotion-Native checklist",
+              "- Follow FSD boundaries under src/: app=routes/layout only; shared=reusable(ui/hooks/lib) only; entities=domain-only; features=compose entities+shared; widgets=UI composition.",
+              "- Modularize repeated logic/components: extract to shared/ui, shared/hooks, or shared/lib; prefer small, reusable utilities/components.",
+              "- Styling (@emotion/native): use styled components with theme tokens and simple variant props (e.g., <Button primary />); compose with React Native style arrays ([base, cond && extra]); avoid recreating style objects inside render when possible; keep styles co-located but separate from business logic.",
+              "- Error handling: avoid blanket try/catch; implement and reuse a central error handler/hook that logs safely (no PII) and surfaces clear, user-facing messages.",
+              "Prioritize high-impact findings; avoid nitpicks that don’t affect correctness or clarity."
             ].join("\n") : "";
 
             const sbGuide = sb ? [

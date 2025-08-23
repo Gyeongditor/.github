@@ -131,7 +131,36 @@ jobs:
               "Prioritize high-impact findings; skip non-blocking nits."
             ].join("\n") : "";
 
-            const guide = [shared, rnGuide, sbGuide, faGuide].filter(Boolean).join("\n\n");
+            const nestGuide = [
+              "- Structure: Keep features isolated: `/src/<feature>/{module,controller,service,dto}`. Controllers stay thin (binding/auth/validation only); business logic lives in services. Use DTO barrel exports and avoid cross-feature imports.",
+              "- Types & Style: Strict TypeScript, avoid `any`, declare return types, keep functions small, extract pure helpers.",
+              "",
+              "Validation & Upload",
+              "- Enable global `ValidationPipe({ transform:true, whitelist:true, forbidNonWhitelisted:true })`.",
+              "- File upload: `@UseInterceptors(FileInterceptor('audio', { limits:{ fileSize: 25*1024*1024 } }))`.",
+              "- Add `ParseFilePipe` with `MaxFileSizeValidator(25MB)` and `FileTypeValidator` for `audio/wav|mpeg|mp4|x-m4a|flac`.",
+              "- Map oversize to **413** and unsupported media to **415**. Text fields in multipart arrive via `@Body()` DTO.",
+              "",
+              "Config & Secrets",
+              "- Use `@nestjs/config` with schema validation (zod/joi). Do not read `process.env` directly in business code.",
+              "- Start with deny-by-default CORS; allow-list per environment. Apply `helmet` for common security headers.",
+              "",
+              "External Calls (OpenAI) & Resilience",
+              "- Inject the OpenAI SDK via a singleton provider; never `new` it inside services.",
+              "- Use `toFile(buffer, originalname, { type: mimetype })`. Default model: `gpt-4o-mini-transcribe`; expose `language`, `prompt`, `model` as options.",
+              "- Set timeouts and exponential backoff for **429/5xx**; map failures to safe `HttpException`s.",
+              "- Keep response shape stable: `{ text, durationMs?, model? }` (trim text; guard against null).",
+              "",
+              "Swagger (Practical)",
+              "- Build with title/description/version and a `servers` entry (e.g., `http://localhost:3000`).",
+              "- Security: `.addSecurity('ApiKeyAuth', { type:'apiKey', in:'header', name:'x-api-key' }).addSecurityRequirements('ApiKeyAuth')` (or `.addBearerAuth()` if using JWT).",
+              "- Uploads: `@ApiConsumes('multipart/form-data')` + `@ApiBody({ type: SttUploadReqDto })`.",
+              "- Responses: `@ApiOkResponse({ type: SttResDto, description: 'Transcription success', examples: { default: { value: { text: 'Hello', durationMs: 532, model: 'gpt-4o-mini-transcribe' }}}})`.",
+              "- UI: enable `persistAuthorization`, set `tagsSorter/operationsSorter='alpha'`, and expose `/openapi.json`."
+            ].join("\n");
+
+
+            const guide = [shared, rnGuide, sbGuide, faGuide, nestGuide].filter(Boolean).join("\n\n");
 
             // 3) 모델 선택(레이블에 deep 라벨 있으면 상향)
             const labels = (pr.labels || []).map(l => l.name);
